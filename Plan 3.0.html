@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Розподіл плану 3D-друку</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #ffffff; --bg2: #f5f5f4; --bg3: #eeecea;
+    --text: #1a1a18; --text2: #5f5e5a; --text3: #888780;
+    --border: rgba(0,0,0,0.12); --border2: rgba(0,0,0,0.22);
+    --radius: 8px; --radius-lg: 12px;
+    --green-bg: #EAF3DE; --green-text: #3B6D11;
+    --red-bg: #FCEBEB; --red-text: #A32D2D;
+    --amber-bg: #FAEEDA; --amber-text: #854F0B;
+    --blue-bg: #E6F1FB; --blue-text: #185FA5;
+    --accent: #1a1a18;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1c1a; --bg2: #262624; --bg3: #2e2e2b;
+      --text: #f0ede8; --text2: #b4b2a9; --text3: #888780;
+      --border: rgba(255,255,255,0.1); --border2: rgba(255,255,255,0.2);
+      --green-bg: #173404; --green-text: #C0DD97;
+      --red-bg: #501313; --red-text: #F7C1C1;
+      --amber-bg: #412402; --amber-text: #FAC775;
+      --blue-bg: #042C53; --blue-text: #85B7EB;
+      --accent: #f0ede8;
+    }
+  }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg3); color: var(--text); min-height: 100vh; padding: 1rem; line-height: 1.5; }
+  h1 { font-size: 18px; font-weight: 500; margin-bottom: 1.25rem; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+  @media(max-width: 640px) { .grid2 { grid-template-columns: 1fr; } }
+  .card { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 1rem 1.25rem; }
+  .card-title { font-size: 13px; font-weight: 500; color: var(--text2); margin-bottom: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  textarea { width: 100%; min-height: 190px; font-family: 'Courier New', monospace; font-size: 13px; resize: vertical; border: 0.5px solid var(--border2); border-radius: var(--radius); padding: 10px 12px; background: var(--bg2); color: var(--text); line-height: 1.7; }
+  textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .hint { font-size: 12px; color: var(--text3); margin-top: 6px; line-height: 1.5; }
+  .err { font-size: 12px; color: var(--red-text); margin-top: 6px; }
+  .actions { display: flex; gap: 8px; margin-top: 0.75rem; flex-wrap: wrap; }
+  
+  /* ИСПРАВЛЕНО: Улучшен тач-отклик для мобильных */
+  button { font-family: inherit; font-size: 14px; padding: 10px 16px; border-radius: var(--radius); border: 0.5px solid var(--border2); background: transparent; color: var(--text); cursor: pointer; transition: background 0.15s; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+  button:hover, button:active { background: var(--bg2); }
+  button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  button.primary:hover { opacity: 0.85; }
+  
+  .sectors-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 1rem; }
+  @media(max-width: 480px) { .sectors-grid { grid-template-columns: repeat(2, 1fr); } }
+  .sector-item { display: flex; align-items: center; gap: 6px; background: var(--bg2); border-radius: var(--radius); border: 0.5px solid var(--border); padding: 6px 8px; }
+  .sector-name { font-size: 12px; font-weight: 500; color: var(--text2); min-width: 26px; }
+  .sector-input { flex: 1; width: 0; font-size: 13px; border: none; background: transparent; color: var(--text); text-align: center; font-family: inherit; padding: 4px 0; }
+  .sector-input:focus { outline: none; }
+  .items-list { min-height: 100px; }
+  .item-row { display: flex; align-items: flex-start; justify-content: space-between; padding: 6px 0; border-bottom: 0.5px solid var(--border); gap: 8px; }
+  .item-row:last-child { border-bottom: none; }
+  .item-name { font-size: 13px; color: var(--text); flex: 1; }
+  .item-sub { font-size: 12px; color: var(--text2); }
+  .item-qty { font-size: 13px; font-weight: 500; color: var(--text2); white-space: nowrap; }
+  .badge { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 8px; font-weight: 500; margin-left: 4px; }
+  .badge-ok { background: var(--green-bg); color: var(--green-text); }
+  .badge-warn { background: var(--red-bg); color: var(--red-text); }
+  .badge-amber { background: var(--amber-bg); color: var(--amber-text); }
+  .badge-blue { background: var(--blue-bg); color: var(--blue-text); }
+  .stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 0.75rem; }
+  .stat { background: var(--bg2); border-radius: var(--radius); padding: 8px 10px; text-align: center; }
+  .stat-val { font-size: 20px; font-weight: 500; }
+  .stat-lbl { font-size: 11px; color: var(--text2); margin-top: 2px; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 0.75rem; flex-wrap: wrap; }
+  .tab { font-family: inherit; font-size: 13px; padding: 8px 14px; border-radius: var(--radius); border: 0.5px solid transparent; cursor: pointer; color: var(--text2); background: transparent; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+  .tab.active { border-color: var(--border2); color: var(--text); background: var(--bg); }
+  .result-area { font-family: 'Courier New', monospace; font-size: 13px; white-space: pre-wrap; line-height: 1.7; color: var(--text); background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 12px; min-height: 180px; user-select: all; -webkit-user-select: all; word-break: break-word; }
+  .sector-detail { margin-bottom: 8px; border-radius: var(--radius); border: 0.5px solid var(--border); overflow: hidden; }
+  .sector-detail-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--bg2); flex-wrap: wrap; gap: 4px; }
+  .sector-detail-name { font-size: 13px; font-weight: 500; }
+  .sector-items-list { padding: 6px 12px 8px; }
+  .sector-model-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+  .sector-model-bar-wrap { flex: 1; height: 6px; background: var(--bg3); border-radius: 3px; overflow: hidden; }
+  .sector-model-bar { height: 100%; border-radius: 3px; background: var(--text3); }
+  .sector-model-name { font-size: 12px; color: var(--text); min-width: 60px; }
+  .sector-model-qty { font-size: 12px; color: var(--text2); min-width: 50px; text-align: right; white-space: nowrap; }
+  .fill-pct { font-size: 11px; color: var(--text3); min-width: 36px; text-align: right; }
+  .c-ok { color: var(--green-text); }
+  .c-over { color: var(--red-text); }
+  .c-mix { color: var(--amber-text); }
+  .empty-state { color: var(--text3); font-size: 13px; padding-top: 1rem; }
+  .copy-toast { position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%); background: var(--accent); color: var(--bg); padding: 8px 18px; border-radius: 20px; font-size: 13px; opacity: 0; transition: opacity 0.2s; pointer-events: none; z-index: 99; }
+  .copy-toast.show { opacity: 1; }
+  .mode-toggle { display: flex; gap: 6px; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; }
+  .mode-btn { font-size: 12px; padding: 6px 12px; border-radius: 20px; border: 0.5px solid var(--border2); cursor: pointer; color: var(--text2); background: transparent; font-family: inherit; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+  .mode-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  .mode-label { font-size: 12px; color: var(--text3); }
+  .rem-fill-note { font-size: 12px; background: var(--blue-bg); color: var(--blue-text); border-radius: var(--radius); padding: 6px 10px; margin-top: 4px; display: none; }
+</style>
+</head>
+<body>
+
+<h1>&#9881; Розподіл плану 3D-друку</h1>
+
+<div class="grid2">
+  <div class="card">
+    <div class="card-title">Вхідний план</div>
+    <textarea id="planInput" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Вставте план тут...
+Приклад:
+100 - 403 (Два рази)
+50 - 406 - Кріпл.ніжки 1
+50 - 407 - Кріпл.ніжки 2
+100 - 459
+100 - 132-03
+Залишок 404-01
+Решта 259"></textarea>
+    <div class="hint">«Залишок», «Решта», «Всі інші» — модель заповнює всі вільні місця що залишились.</div>
+    <div id="parseErr" class="err" style="display:none;"></div>
+    <div class="actions">
+      <button type="button" class="primary" onclick="parsePlan()">&#9654; Розпізнати план</button>
+      <button type="button" onclick="clearAll()">&#10005; Очистити</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Розпізнані позиції</div>
+    <div id="itemsList" class="items-list">
+      <div class="empty-state">&#8592; Вставте план і натисніть «Розпізнати»</div>
+    </div>
+    <div id="statsRow" class="stat-row" style="display:none;">
+      <div class="stat"><div class="stat-val" id="statTotal">0</div><div class="stat-lbl">Деталей</div></div>
+      <div class="stat"><div class="stat-val" id="statModels">0</div><div class="stat-lbl">Моделей</div></div>
+      <div class="stat"><div class="stat-val" id="statSectors">0</div><div class="stat-lbl">Секторів</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:1rem;">
+  <div class="card-title">Сектори та кількість принтерів</div>
+  <div class="sectors-grid" id="sectorsGrid"></div>
+  <div class="mode-toggle">
+    <span class="mode-label">Режим:</span>
+    <button type="button" class="mode-btn active" id="mode-block" onclick="setMode('block')">&#9646; Блоками</button>
+    <button type="button" class="mode-btn" id="mode-fill" onclick="setMode('fill')">&#9644; Заповнення</button>
+  </div>
+  <div class="actions">
+    <button type="button" class="primary" onclick="distribute()">&#9889; Авторозподіл</button>
+    <button type="button" onclick="addSector()">+ Додати сектор</button>
+    <button type="button" onclick="removeSector()">&#8722; Видалити останній</button>
+  </div>
+  <div class="hint" id="modeHint">Блоками: кожна модель займає цілі сектори до упору. Залишок/Решта — заповнює всі вільні місця що залишились.</div>
+</div>
+
+<div class="card">
+  <div class="card-title">Результат</div>
+  <div class="tabs">
+    <button type="button" class="tab active" id="tab-text" onclick="switchTab('text')">Текст для копіювання</button>
+    <button type="button" class="tab" id="tab-detail" onclick="switchTab('detail')">Деталі по секторах</button>
+  </div>
+  <div id="view-text">
+    <div class="result-area" id="resultText">Результат з'явиться тут після авторозподілу...</div>
+    <div class="actions">
+      <button type="button" onclick="copyResult()">&#9138; Копіювати</button>
+      <button type="button" onclick="shareResult()">&#8599; Поділитись</button>
+    </div>
+  </div>
+  <div id="view-detail" style="display:none;">
+    <div id="detailView"></div>
+  </div>
+</div>
+
+<div class="copy-toast" id="toast">Скопійовано!</div>
+
+<script>
+const DEFAULT_SECTORS = [
+  {name:'А1',printers:62},{name:'А2',printers:66},{name:'А3',printers:60},{name:'А4',printers:61},
+  {name:'В1',printers:62},{name:'В2',printers:64},{name:'В3',printers:60},{name:'В4',printers:60}
+];
+
+let sectors = JSON.parse(JSON.stringify(DEFAULT_SECTORS));
+let items = [];
+let distMode = 'block';
+
+function setMode(m) {
+  distMode = m;
+  document.getElementById('mode-block').className = 'mode-btn' + (m==='block'?' active':'');
+  document.getElementById('mode-fill').className = 'mode-btn' + (m==='fill'?' active':'');
+  document.getElementById('modeHint').textContent = m === 'block'
+    ? 'Блоками: кожна модель займає цілі сектори до упору. Залишок/Решта — заповнює всі вільні місця що залишились.'
+    : 'Заповнення: великі моделі йдуть першими, займають сектори повністю. Залишок/Решта — все що не зайнято.';
+}
+
+function renderSectors() {
+  document.getElementById('sectorsGrid').innerHTML = sectors.map((s,i) => `
+    <div class="sector-item">
+      <span class="sector-name">${s.name}</span>
+      <input class="sector-input" type="number" min="1" max="999" value="${s.printers}"
+        onchange="sectors[${i}].printers=Math.max(1,parseInt(this.value)||1);this.value=sectors[${i}].printers;"
+        aria-label="Принтерів у секторі ${s.name}">
+      <span style="font-size:11px;color:var(--text3);">пр.</span>
+    </div>`).join('');
+  document.getElementById('statSectors').textContent = sectors.length;
+}
+
+const FILL_KEYWORDS = /^(залишок|решта|всі інші|інші|rnd|остаток|остальные)\s*/i;
+
+function parsePlan() {
+  const raw = document.getElementById('planInput').value.trim();
+  const errEl = document.getElementById('parseErr');
+  errEl.style.display = 'none';
+  items = [];
+
+  if (!raw) { errEl.textContent = 'Введіть план'; errEl.style.display='block'; return; }
+
+  for (const line of raw.split('\n')) {
+    const t = line.trim();
+    if (!t || /^(інкубатор|план на)/i.test(t)) continue;
+
+    const remMatch = t.match(new RegExp(FILL_KEYWORDS.source + '(.+)', 'i'));
+    if (remMatch) {
+      const model = remMatch[2].trim();
+      items.push({ model, qty: 0, fillRemaining: true, label: model });
+      continue;
+    }
+
+    const m = t.match(/^(\d+)\s*[-–]\s*([A-Za-zА-Яа-яЇїІіЄєҐґ0-9]+(?:-[A-Za-zА-Яа-яЇїІіЄєҐґ0-9]+)*)/u);
+    if (m) {
+      const qty = parseInt(m[1]);
+      const model = m[2];
+      const rest = t.slice(m[0].length).trim().replace(/^[-–]\s*/,'').replace(/\(два рази\)/i,'').trim();
+      const dbl = /два рази|x2|×2|\(два рази\)/i.test(t);
+      items.push({ model, qty, fillRemaining: false, label: rest || model, double: dbl });
+    }
+  }
+
+  if (!items.length) {
+    errEl.textContent = 'Не вдалося розпізнати позиції. Перевірте формат.';
+    errEl.style.display='block';
+    return;
+  }
+  renderItems();
+}
+
+function renderItems() {
+  const total = items.filter(i=>!i.fillRemaining).reduce((s,i)=>s+i.qty,0);
+  document.getElementById('itemsList').innerHTML = items.map(item => `
+    <div class="item-row">
+      <div>
+        <div class="item-name">${item.model}
+          ${item.fillRemaining
+            ? '<span class="badge badge-blue">заповнює решту</span>'
+            : item.double ? '<span class="badge badge-warn">×2</span>' : ''}
+        </div>
+        ${item.label && item.label !== item.model && !item.fillRemaining
+          ? `<div class="item-sub">${item.label}</div>` : ''}
+      </div>
+      <div class="item-qty">${item.fillRemaining ? 'всі вільні' : item.qty + ' шт'}</div>
+    </div>`).join('');
+
+  document.getElementById('statsRow').style.display = 'grid';
+  document.getElementById('statTotal').textContent = total;
+  document.getElementById('statModels').textContent = items.length;
+  document.getElementById('statSectors').textContent = sectors.length;
+}
+
+function distribute() {
+  if (!items.length) { alert('Спочатку розпізнайте план'); return; }
+
+  const fixedItems = items.filter(i => !i.fillRemaining);
+  const fillItems  = items.filter(i => i.fillRemaining);
+
+  const plan = sectors.map(s => ({ name: s.name, printers: s.printers, assigned: [], used: 0 }));
+
+  if (distMode === 'fill') {
+    fixedItems.sort((a,b) => b.qty - a.qty);
+  }
+
+  let secIdx = 0;
+  for (const item of fixedItems) {
+    let left = item.qty;
+    while (left > 0 && secIdx < plan.length) {
+      const sec = plan[secIdx];
+      const cap = sec.printers - sec.used;
+      const give = Math.min(left, cap);
+      if (give > 0) {
+        const lbl = item.double ? `${item.model} х2 ${give}пр.` : `${item.model} ${give}пр.`;
+        sec.assigned.push({ model: item.model, qty: give, double: item.double, label: lbl, isFill: false });
+        sec.used += give;
+        left -= give;
+      }
+      if (sec.used >= sec.printers) secIdx++;
+    }
+  }
+
+  if (fillItems.length > 0) {
+    const freeSectors = plan.map((sec, idx) => ({ idx, free: sec.printers - sec.used }))
+                            .filter(s => s.free > 0);
+
+    const totalFree = freeSectors.reduce((s,f) => s + f.free, 0);
+
+    if (fillItems.length === 1) {
+      const item = fillItems[0];
+      freeSectors.forEach(f => {
+        if (f.free > 0) {
+          const lbl = `${item.model} ${f.free}пр.`;
+          plan[f.idx].assigned.push({ model: item.model, qty: f.free, label: lbl, isFill: true });
+          plan[f.idx].used += f.free;
+        }
+      });
+    } else {
+      const share = Math.floor(totalFree / fillItems.length);
+      let fillQueue = fillItems.map((item, i) => ({
+        ...item,
+        left: i < fillItems.length - 1 ? share : totalFree - share * (fillItems.length - 1)
+      }));
+
+      let fi = 0;
+      for (const f of freeSectors) {
+        let slotLeft = f.free;
+        while (slotLeft > 0 && fi < fillQueue.length) {
+          const fitem = fillQueue[fi];
+          const give = Math.min(slotLeft, fitem.left);
+          if (give > 0) {
+            const lbl = `${fitem.model} ${give}пр.`;
+            plan[f.idx].assigned.push({ model: fitem.model, qty: give, label: lbl, isFill: true });
+            plan[f.idx].used += give;
+            slotLeft -= give;
+            fitem.left -= give;
+          }
+          if (fitem.left <= 0) fi++;
+        }
+      }
+    }
+  }
+
+  const d = new Date();
+  const dd = String(d.getDate()).padStart(2,'0');
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const lines = [`Денний ${dd}.${mm}.`];
+
+  plan.forEach(sec => {
+    const parts = sec.assigned.map(a => a.label).join(', ');
+    lines.push(`${sec.name}(${sec.printers}) ${parts || '—'}`);
+  });
+
+  document.getElementById('resultText').textContent = lines.join('\n');
+  renderDetail(plan);
+  document.getElementById('statSectors').textContent = sectors.length;
+}
+
+function renderDetail(plan) {
+  document.getElementById('detailView').innerHTML = plan.map(sec => {
+    const totalUsed = sec.used;
+    const pct = sec.printers > 0 ? Math.round(totalUsed / sec.printers * 100) : 0;
+    const mainModels = sec.assigned.filter(a => !a.isFill && a.qty > 0);
+    const fillModels = sec.assigned.filter(a => a.isFill);
+    const over = totalUsed > sec.printers;
+    const modelCount = new Set(sec.assigned.map(a=>a.model)).size;
+    const statusBadge = over
+      ? '<span class="badge badge-warn">перевищення</span>'
+      : modelCount <= 1
+        ? '<span class="badge badge-ok">1 модель</span>'
+        : `<span class="badge badge-amber">${modelCount} моделі</span>`;
+
+    const rows = sec.assigned.map(a => {
+      const barPct = sec.printers > 0 ? Math.round(a.qty / sec.printers * 100) : 0;
+      const fillMark = a.isFill ? ' <span class="badge badge-blue" style="font-size:10px;">решта</span>' : '';
+      return `<div class="sector-model-row">
+        <span class="sector-model-name">${a.model}${a.double?' х2':''}${fillMark}</span>
+        <div class="sector-model-bar-wrap"><div class="sector-model-bar" style="width:${barPct}%"></div></div>
+        <span class="sector-model-qty">${a.qty} шт</span>
+        <span class="fill-pct">${barPct}%</span>
+      </div>`;
+    }).join('');
+
+    return `<div class="sector-detail">
+      <div class="sector-detail-header">
+        <span class="sector-detail-name">${sec.name} (${sec.printers} принт.)</span>
+        <span><span class="${over?'c-over':pct<50?'c-mix':'c-ok'}">${totalUsed}/${sec.printers}</span> ${statusBadge}</span>
+      </div>
+      <div class="sector-items-list">${rows || '<span style="font-size:12px;color:var(--text3);">—</span>'}</div>
+    </div>`;
+  }).join('');
+}
+
+function switchTab(tab) {
+  document.getElementById('tab-text').className = 'tab' + (tab==='text'?' active':'');
+  document.getElementById('tab-detail').className = 'tab' + (tab==='detail'?' active':'');
+  document.getElementById('view-text').style.display = tab==='text'?'block':'none';
+  document.getElementById('view-detail').style.display = tab==='detail'?'block':'none';
+}
+
+// ИСПРАВЛЕНО: Безопасный метод копирования на смартфонах без HTTPS
+function copyResult() {
+  const text = document.getElementById('resultText').textContent;
+  if (!text || text.startsWith('Результат')) return;
+
+  // Резервный метод через временный элемент
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.left = '-9999px';
+  ta.style.top = '0';
+  document.body.appendChild(ta);
+  
+  // Выделение текста специальным образом под мобильные iOS/Android
+  if (navigator.userAgent.match(/ipad|iphone/i)) {
+    const range = document.createRange();
+    range.selectNodeContents(ta);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    ta.setSelectionRange(0, 999999);
+  } else {
+    ta.select();
+  }
+
+  try {
+    document.execCommand('copy');
+    showToast();
+  } catch (err) {
+    // Если execcommand заблокирован, пробуем современный API
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(showToast).catch(() => alert('Не вдалося скопіювати. Спробуйте виділити текст вручну.'));
+    }
+  }
+  document.body.removeChild(ta);
+}
+
+function shareResult() {
+  const text = document.getElementById('resultText').textContent;
+  if (!text || text.startsWith('Результат')) return;
+  if (navigator.share) {
+    navigator.share({ text }).catch(()=>{});
+  } else {
+    copyResult();
+  }
+}
+
+function showToast() {
+  const t = document.getElementById('toast');
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 1800);
+}
+
+function addSector() {
+  const extras = ['С1','С2','С3','С4','D1','D2','D3','D4','E1','E2'];
+  const name = extras[Math.max(0, sectors.length - 8)] || `X${sectors.length+1}`;
+  sectors.push({ name, printers: 60 });
+  renderSectors();
+}
+
+function removeSector() {
+  if (sectors.length > 1) { sectors.pop(); renderSectors(); }
+}
+
+function clearAll() {
+  document.getElementById('planInput').value = '';
+  document.getElementById('itemsList').innerHTML = '<div class="empty-state">&#8592; Вставте план і натисніть «Розпізнати»</div>';
+  document.getElementById('statsRow').style.display = 'none';
+  document.getElementById('resultText').textContent = "Результат з'явиться тут після авторозподілу...";
+  document.getElementById('detailView').innerHTML = '';
+  items = [];
+}
+
+renderSectors();
+</script>
+</body>
+</html>
