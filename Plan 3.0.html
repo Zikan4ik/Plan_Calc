@@ -387,39 +387,31 @@ function switchTab(tab) {
   document.getElementById('view-detail').style.display = tab==='detail'?'block':'none';
 }
 
-// ИСПРАВЛЕНО: Безопасный метод копирования на смартфонах без HTTPS
 function copyResult() {
   const text = document.getElementById('resultText').textContent;
   if (!text || text.startsWith('Результат')) return;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(showToast).catch(() => fallbackCopy(text));
+  } else {
+    fallbackCopy(text);
+  }
+}
 
-  // Резервный метод через временный элемент
+function fallbackCopy(text) {
   const ta = document.createElement('textarea');
   ta.value = text;
   ta.style.position = 'fixed';
   ta.style.left = '-9999px';
   ta.style.top = '0';
+  ta.style.fontSize = '16px';
   document.body.appendChild(ta);
-  
-  // Выделение текста специальным образом под мобильные iOS/Android
-  if (navigator.userAgent.match(/ipad|iphone/i)) {
-    const range = document.createRange();
-    range.selectNodeContents(ta);
-    const selection = window.getSelection();
-    selection.removeAllRanges();
-    selection.addRange(range);
-    ta.setSelectionRange(0, 999999);
-  } else {
-    ta.select();
-  }
-
+  ta.focus();
+  ta.setSelectionRange(0, 999999);
   try {
     document.execCommand('copy');
     showToast();
-  } catch (err) {
-    // Если execcommand заблокирован, пробуем современный API
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(showToast).catch(() => alert('Не вдалося скопіювати. Спробуйте виділити текст вручну.'));
-    }
+  } catch(e) {
+    alert('Не вдалося скопіювати. Виділіть текст вручну.');
   }
   document.body.removeChild(ta);
 }
