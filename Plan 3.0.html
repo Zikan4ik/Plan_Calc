@@ -76,12 +76,17 @@
   .sector-detail-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--bg2); flex-wrap: wrap; gap: 4px; }
   .sector-detail-name { font-size: 13px; font-weight: 500; }
   .sector-items-list { padding: 6px 12px 8px; }
-  .sector-model-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
-  .sector-model-bar-wrap { flex: 1; height: 6px; background: var(--bg3); border-radius: 3px; overflow: hidden; }
+  .sector-model-row { display: flex; align-items: center; gap: 6px; padding: 4px 0; flex-wrap: wrap; }
+  .sector-model-bar-wrap { flex: 1; min-width: 30px; height: 6px; background: var(--bg3); border-radius: 3px; overflow: hidden; }
   .sector-model-bar { height: 100%; border-radius: 3px; background: var(--text3); }
   .sector-model-name { font-size: 12px; color: var(--text); min-width: 60px; }
   .sector-model-qty { font-size: 12px; color: var(--text2); min-width: 50px; text-align: right; white-space: nowrap; }
   .fill-pct { font-size: 11px; color: var(--text3); min-width: 36px; text-align: right; }
+  .row-controls { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+  .move-select { font-size: 11px; padding: 3px 2px; border-radius: 6px; border: 0.5px solid var(--border2); background: var(--bg); color: var(--text2); font-family: inherit; max-width: 54px; touch-action: manipulation; }
+  .move-select:focus { outline: 1px solid var(--accent); }
+  .remove-chip { font-size: 12px; line-height: 1; background: transparent; border: 0.5px solid transparent; color: var(--red-text); cursor: pointer; padding: 4px 6px; border-radius: 4px; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+  .remove-chip:hover, .remove-chip:active { background: var(--red-bg); }
   .c-ok { color: var(--green-text); }
   .c-over { color: var(--red-text); }
   .c-mix { color: var(--amber-text); }
@@ -93,6 +98,11 @@
   .mode-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
   .mode-label { font-size: 12px; color: var(--text3); }
   .rem-fill-note { font-size: 12px; background: var(--blue-bg); color: var(--blue-text); border-radius: var(--radius); padding: 6px 10px; margin-top: 4px; display: none; }
+  .swap-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 0.75rem; padding-bottom: 0.75rem; border-bottom: 0.5px solid var(--border); }
+  .swap-label { font-size: 12px; color: var(--text2); }
+  .swap-arrow { font-size: 14px; color: var(--text3); }
+  .swap-bar .move-select { max-width: 70px; font-size: 12px; padding: 5px 4px; }
+  .swap-bar button { padding: 6px 12px; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -150,6 +160,13 @@
 
 <div class="card">
   <div class="card-title">Результат</div>
+  <div class="swap-bar" id="swapBar" style="display:none;">
+    <span class="swap-label">Поміняти сектори місцями:</span>
+    <select id="swapSelA" class="move-select" aria-label="Перший сектор"></select>
+    <span class="swap-arrow">&#8646;</span>
+    <select id="swapSelB" class="move-select" aria-label="Другий сектор"></select>
+    <button type="button" onclick="doSwap()">Поміняти</button>
+  </div>
   <div class="tabs">
     <button type="button" class="tab active" id="tab-text" onclick="switchTab('text')">Текст для копіювання</button>
     <button type="button" class="tab" id="tab-detail" onclick="switchTab('detail')">Деталі по секторах</button>
@@ -162,6 +179,7 @@
     </div>
   </div>
   <div id="view-detail" style="display:none;">
+    <div class="hint" style="margin-top:0;margin-bottom:0.5rem;">Виберіть інший сектор у списку біля позиції, щоб перенести її туди, або натисніть ✕, щоб видалити.</div>
     <div id="detailView"></div>
   </div>
 </div>
@@ -177,6 +195,7 @@ const DEFAULT_SECTORS = [
 let sectors = JSON.parse(JSON.stringify(DEFAULT_SECTORS));
 let items = [];
 let distMode = 'block';
+let plan = [];
 
 function setMode(m) {
   distMode = m;
@@ -266,7 +285,7 @@ function distribute() {
   const fixedItems = items.filter(i => !i.fillRemaining);
   const fillItems  = items.filter(i => i.fillRemaining);
 
-  const plan = sectors.map(s => ({ name: s.name, printers: s.printers, assigned: [], used: 0 }));
+  plan = sectors.map(s => ({ name: s.name, printers: s.printers, assigned: [], used: 0 }));
 
   if (distMode === 'fill') {
     fixedItems.sort((a,b) => b.qty - a.qty);
@@ -330,6 +349,13 @@ function distribute() {
     }
   }
 
+  document.getElementById('resultText').textContent = buildResultText(plan);
+  renderDetail(plan);
+  renderSwapBar();
+  document.getElementById('statSectors').textContent = sectors.length;
+}
+
+function buildResultText(plan) {
   const d = new Date();
   const dd = String(d.getDate()).padStart(2,'0');
   const mm = String(d.getMonth()+1).padStart(2,'0');
@@ -340,17 +366,82 @@ function distribute() {
     lines.push(`${sec.name}(${sec.printers}) ${parts || '—'}`);
   });
 
-  document.getElementById('resultText').textContent = lines.join('\n');
+  return lines.join('\n');
+}
+
+function renderSwapBar() {
+  const bar = document.getElementById('swapBar');
+  if (!plan.length) { bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+  const opts = plan.map((s,i) => `<option value="${i}">${s.name}</option>`).join('');
+  const selA = document.getElementById('swapSelA');
+  const selB = document.getElementById('swapSelB');
+  const prevA = selA.value, prevB = selB.value;
+  selA.innerHTML = opts;
+  selB.innerHTML = opts;
+  if (prevA) selA.value = prevA;
+  if (prevB) selB.value = prevB;
+  else if (plan.length > 1) selB.selectedIndex = 1;
+}
+
+function doSwap() {
+  const idxA = parseInt(document.getElementById('swapSelA').value, 10);
+  const idxB = parseInt(document.getElementById('swapSelB').value, 10);
+  if (isNaN(idxA) || isNaN(idxB) || idxA === idxB) return;
+  const a = plan[idxA], b = plan[idxB];
+  const tmpAssigned = a.assigned, tmpUsed = a.used;
+  a.assigned = b.assigned; a.used = b.used;
+  b.assigned = tmpAssigned; b.used = tmpUsed;
+  document.getElementById('resultText').textContent = buildResultText(plan);
   renderDetail(plan);
-  document.getElementById('statSectors').textContent = sectors.length;
+}
+
+function relabel(a) {
+  a.label = a.double ? `${a.model} х2 ${a.qty}пр.` : `${a.model} ${a.qty}пр.`;
+}
+
+function moveAssigned(fromIdx, itemIdx, toIdxRaw) {
+  const toIdx = parseInt(toIdxRaw, 10);
+  if (isNaN(toIdx) || toIdx === fromIdx) { renderDetail(plan); return; }
+  const fromSec = plan[fromIdx];
+  const item = fromSec.assigned[itemIdx];
+  if (!item) return;
+
+  fromSec.assigned.splice(itemIdx, 1);
+  fromSec.used -= item.qty;
+
+  const toSec = plan[toIdx];
+  const existing = toSec.assigned.find(a => a.model === item.model && a.isFill === item.isFill && a.double === item.double);
+  if (existing) {
+    existing.qty += item.qty;
+    relabel(existing);
+  } else {
+    toSec.assigned.push(item);
+  }
+  toSec.used += item.qty;
+
+  document.getElementById('resultText').textContent = buildResultText(plan);
+  renderDetail(plan);
+}
+
+function removeAssigned(secIdx, itemIdx) {
+  const sec = plan[secIdx];
+  const item = sec.assigned[itemIdx];
+  if (!item) return;
+  if (!confirm(`Видалити «${item.model}» (${item.qty} пр.) з сектору ${sec.name}?`)) return;
+  sec.assigned.splice(itemIdx, 1);
+  sec.used -= item.qty;
+  document.getElementById('resultText').textContent = buildResultText(plan);
+  renderDetail(plan);
 }
 
 function renderDetail(plan) {
-  document.getElementById('detailView').innerHTML = plan.map(sec => {
+  const sectorOptions = (selectedIdx) => plan.map((s,i) =>
+    `<option value="${i}" ${i===selectedIdx?'selected':''}>${s.name}</option>`).join('');
+
+  document.getElementById('detailView').innerHTML = plan.map((sec, secIdx) => {
     const totalUsed = sec.used;
     const pct = sec.printers > 0 ? Math.round(totalUsed / sec.printers * 100) : 0;
-    const mainModels = sec.assigned.filter(a => !a.isFill && a.qty > 0);
-    const fillModels = sec.assigned.filter(a => a.isFill);
     const over = totalUsed > sec.printers;
     const modelCount = new Set(sec.assigned.map(a=>a.model)).size;
     const statusBadge = over
@@ -359,7 +450,7 @@ function renderDetail(plan) {
         ? '<span class="badge badge-ok">1 модель</span>'
         : `<span class="badge badge-amber">${modelCount} моделі</span>`;
 
-    const rows = sec.assigned.map(a => {
+    const rows = sec.assigned.map((a, ai) => {
       const barPct = sec.printers > 0 ? Math.round(a.qty / sec.printers * 100) : 0;
       const fillMark = a.isFill ? ' <span class="badge badge-blue" style="font-size:10px;">решта</span>' : '';
       return `<div class="sector-model-row">
@@ -367,6 +458,10 @@ function renderDetail(plan) {
         <div class="sector-model-bar-wrap"><div class="sector-model-bar" style="width:${barPct}%"></div></div>
         <span class="sector-model-qty">${a.qty} шт</span>
         <span class="fill-pct">${barPct}%</span>
+        <span class="row-controls">
+          <select class="move-select" onchange="moveAssigned(${secIdx}, ${ai}, this.value)" aria-label="Перенести в інший сектор">${sectorOptions(secIdx)}</select>
+          <button type="button" class="remove-chip" onclick="removeAssigned(${secIdx}, ${ai})" aria-label="Видалити позицію">&#10005;</button>
+        </span>
       </div>`;
     }).join('');
 
@@ -450,6 +545,8 @@ function clearAll() {
   document.getElementById('resultText').textContent = "Результат з'явиться тут після авторозподілу...";
   document.getElementById('detailView').innerHTML = '';
   items = [];
+  plan = [];
+  document.getElementById('swapBar').style.display = 'none';
 }
 
 renderSectors();
